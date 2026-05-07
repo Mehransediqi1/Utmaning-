@@ -1,236 +1,209 @@
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x000000, 10, 120);
 
-let ball = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  radius: 20,
-  color: "lime"
+const camera = new THREE.PerspectiveCamera(
+  75,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  1000
+);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(ambientLight);
+
+const pointLight = new THREE.PointLight(0x00ff00, 3, 100);
+pointLight.position.set(0, 10, 10);
+scene.add(pointLight);
+
+const ballGeometry = new THREE.SphereGeometry(1, 32, 32);
+
+const ballMaterial = new THREE.MeshStandardMaterial({
+  color: 0x00ff00,
+  emissive: 0x00ff00,
+  emissiveIntensity: 1
+});
+
+const ball = new THREE.Mesh(ballGeometry, ballMaterial);
+ball.position.y = 1;
+
+scene.add(ball);
+
+camera.position.set(0, 6, 12);
+camera.lookAt(ball.position);
+
+const roadSegments = [];
+
+function createRoad(z) {
+  const geometry = new THREE.BoxGeometry(12, 1, 10);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0x111111,
+    emissive: 0x00ff00,
+    emissiveIntensity: 0.3,
+    wireframe: true
+  });
+
+  const road = new THREE.Mesh(geometry, material);
+
+  road.position.z = z;
+
+  scene.add(road);
+
+  roadSegments.push(road);
+}
+
+for (let i = 0; i < 20; i++) {
+  createRoad(-i * 10);
+}
+
+const obstacles = [];
+
+function createObstacle(z) {
+  const geometry = new THREE.BoxGeometry(2, 2, 2);
+
+  const material = new THREE.MeshStandardMaterial({
+    color: 0xff0000,
+    emissive: 0xff0000,
+    emissiveIntensity: 1
+  });
+
+  const obstacle = new THREE.Mesh(geometry, material);
+
+  obstacle.position.x = (Math.random() - 0.5) * 8;
+  obstacle.position.y = 1;
+  obstacle.position.z = z;
+
+  scene.add(obstacle);
+
+  obstacles.push(obstacle);
+}
+
+for (let i = 0; i < 30; i++) {
+  createObstacle(-50 - i * 20);
+}
+
+const keys = {
+  left: false,
+  right: false
 };
 
-let keys = { left: false, right: false };
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') keys.left = true;
+  if (e.key === 'ArrowRight') keys.right = true;
+});
 
-let velocity = 0;
-let speedMultiplier = 1;
+window.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft') keys.left = false;
+  if (e.key === 'ArrowRight') keys.right = false;
+});
 
+let speed = 0.6;
 let score = 0;
 let gameOver = false;
-let gameStarted = false;
-let saved = false;
 
-let leaderboard = [];
+function updateBall() {
+  if (keys.left) {
+    ball.position.x -= 0.25;
+  }
 
-let obstacles = [];
+  if (keys.right) {
+    ball.position.x += 0.25;
+  }
 
-let roads = [];
-for (let i = 0; i < 10; i++) {
-  roads.push({
-    x: 0,
-    y: i * -100,
-    width: canvas.width,
-    height: 100
+  if (ball.position.x < -5) {
+    ball.position.x = -5;
+  }
+
+  if (ball.position.x > 5) {
+    ball.position.x = 5;
+  }
+}
+
+function updateRoads() {
+  roadSegments.forEach((road) => {
+    road.position.z += speed;
+
+    if (road.position.z > 10) {
+      road.position.z -= 200;
+    }
   });
 }
-
-document.addEventListener("keydown", (e) => {
-  if (e.key === "ArrowLeft") keys.left = true;
-  if (e.key === "ArrowRight") keys.right = true;
-
-  if (e.code === "Space") gameStarted = true;
-
-  if (e.key === "r" && gameOver) resetGame();
-});
-
-document.addEventListener("keyup", (e) => {
-  if (e.key === "ArrowLeft") keys.left = false;
-  if (e.key === "ArrowRight") keys.right = false;
-});
-
-function update() {
-  const accel = 0.5;
-
-  if (keys.left) velocity -= accel;
-  if (keys.right) velocity += accel;
-
-  velocity *= 0.9;
-
-  ball.x += velocity;
-
-  if (ball.x - ball.radius < 0) ball.x = ball.radius;
-  if (ball.x + ball.radius > canvas.width) ball.x = canvas.width - ball.radius;
-}
-
-function updateRoad() {
-  roads.forEach((road) => {
-    road.y += 4 * speedMultiplier;
-    if (road.y > canvas.height) road.y = -100;
-  });
-}
-
-function drawRoad() {
-  roads.forEach((road) => {
-    ctx.fillStyle = "#222";
-    ctx.fillRect(road.x, road.y, road.width, road.height);
-  });
-}
-
-function createObstacle() {
-  let size = 40;
-
-  obstacles.push({
-    x: Math.random() * (canvas.width - size),
-    y: -size,
-    width: size,
-    height: size
-  });
-}
-
-setInterval(createObstacle, 1000);
 
 function updateObstacles() {
   obstacles.forEach((obs) => {
-    obs.y += 6 * speedMultiplier;
+    obs.position.z += speed;
+
+    if (obs.position.z > 10) {
+      obs.position.z = -400;
+      obs.position.x = (Math.random() - 0.5) * 8;
+    }
+
+    const dx = ball.position.x - obs.position.x;
+    const dz = ball.position.z - obs.position.z;
+
+    const distance = Math.sqrt(dx * dx + dz * dz);
+
+    if (distance < 1.8) {
+      gameOver = true;
+    }
   });
-
-  obstacles = obstacles.filter(obs => obs.y < canvas.height);
-}
-
-function drawObstacles() {
-  ctx.fillStyle = "red";
-
-  obstacles.forEach((obs) => {
-    ctx.fillRect(obs.x, obs.y, obs.width, obs.height);
-  });
-}
-
-async function loadLeaderboard() {
-  let res = await fetch("http://localhost/slope-game/api/get_scores.php");
-  leaderboard = await res.json();
 }
 
 async function saveScore() {
-  let username = prompt("Enter your name:");
+  let username = prompt('Enter your name');
 
-  await fetch("http://localhost/slope-game/api/save_score.php", {
-    method: "POST",
+  await fetch('http://localhost/slope-game-3d/api/save_score.php', {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json"
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      username: username,
-      score: score
+      username,
+      score
     })
   });
-
-  loadLeaderboard();
 }
 
-function drawScore() {
-  ctx.fillStyle = "white";
-  ctx.font = "30px Arial";
-  ctx.fillText("Score: " + score, 20, 40);
-}
-
-function drawLeaderboard() {
-  ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-
-  ctx.fillText("Top Players:", canvas.width - 220, 40);
-
-  leaderboard.slice(0, 5).forEach((p, i) => {
-    ctx.fillText(
-      `${i + 1}. ${p.username}: ${p.score}`,
-      canvas.width - 220,
-      70 + i * 25
-    );
-  });
-}
-
-function checkCollision() {
-  for (let obs of obstacles) {
-    let distX = Math.abs(ball.x - (obs.x + obs.width / 2));
-    let distY = Math.abs(ball.y - (obs.y + obs.height / 2));
-
-    if (
-      distX < ball.radius + obs.width / 2 &&
-      distY < ball.radius + obs.height / 2
-    ) {
-      gameOver = true;
-      document.body.style.background = "darkred";
-    }
-  }
-}
-
-function drawBall() {
-  ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-  ctx.fillStyle = ball.color;
-
-  ctx.shadowColor = "lime";
-  ctx.shadowBlur = 20;
-
-  ctx.fill();
-  ctx.closePath();
-
-  ctx.shadowBlur = 0;
-}
-
-function resetGame() {
-  ball.x = canvas.width / 2;
-  velocity = 0;
-  score = 0;
-  obstacles = [];
-  gameOver = false;
-  saved = false;
-  speedMultiplier = 1;
-  document.body.style.background = "black";
-}
-
-function gameLoop() {
-  if (!gameStarted) {
-    ctx.fillStyle = "white";
-    ctx.font = "40px Arial";
-    ctx.fillText("Press SPACE to Start", canvas.width / 2 - 200, canvas.height / 2);
-    return;
-  }
-
+function animate() {
   if (gameOver) {
-    if (!saved) {
-      saveScore();
-      saved = true;
-    }
-
-    ctx.fillStyle = "white";
-    ctx.font = "50px Arial";
-    ctx.fillText("Game Over", canvas.width / 2 - 150, canvas.height / 2);
-    ctx.fillText("Score: " + score, canvas.width / 2 - 120, canvas.height / 2 + 60);
-    ctx.fillText("Press R to Restart", canvas.width / 2 - 180, canvas.height / 2 + 120);
-
-    drawLeaderboard();
+    saveScore();
+    alert('Game Over | Score: ' + score);
+    location.reload();
     return;
   }
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  requestAnimationFrame(animate);
 
-  update();
-  updateRoad();
+  updateBall();
+  updateRoads();
   updateObstacles();
-  checkCollision();
 
-  speedMultiplier += 0.0005;
+  speed += 0.00005;
+
   score++;
 
-  drawRoad();
-  drawBall();
-  drawObstacles();
-  drawScore();
-  drawLeaderboard();
+  const scoreElement = document.getElementById('score');
 
-  requestAnimationFrame(gameLoop);
+  if (scoreElement) {
+    scoreElement.innerText = 'Score: ' + score;
+  }
+
+  renderer.render(scene, camera);
 }
 
-loadLeaderboard();
-gameLoop();
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
